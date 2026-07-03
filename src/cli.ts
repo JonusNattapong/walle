@@ -38,8 +38,25 @@ program
 program
   .command('ls')
   .description('list all tasks')
-  .action(() => {
+  .option('--json', 'print tasks as JSON')
+  .action((opts: { json?: boolean }) => {
     const tasks = listTasks();
+    if (opts.json) {
+      console.log(
+        JSON.stringify(
+          tasks.map((t) => ({
+            id: t.id,
+            status: t.status,
+            costUsd: t.costUsd,
+            prompt: t.prompt,
+            createdAt: t.createdAt,
+          })),
+          null,
+          2,
+        ),
+      );
+      return;
+    }
     if (tasks.length === 0) {
       console.log('no tasks yet — try: walle do "your prompt"');
       return;
