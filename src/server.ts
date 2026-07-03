@@ -104,6 +104,13 @@ img.onload = () => {
     res.json({ id: task.id });
   });
 
+  app.post('/api/layout', (req, res) => {
+    const { desks, lounge, width, height } = req.body ?? {};
+    if (!Array.isArray(desks) || !desks.length) return void res.status(400).json({ error: 'desks[] required' });
+    fs.writeFileSync(path.join(assetsDir, 'office-layout.json'), JSON.stringify({ width, height, desks, lounge }, null, 2));
+    res.json({ ok: true });
+  });
+
   app.get('/api/stream', (req, res) => {
     res.set({
       'content-type': 'text/event-stream',

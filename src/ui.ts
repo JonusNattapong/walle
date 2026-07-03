@@ -77,6 +77,8 @@ const BUBBLE = { running:null, verifying:'…', queued:'z', done:'\\u2713', fail
 const DESKS = [];
 for (let r = 0; r < 3; r++) for (let c = 0; c < 4; c++) DESKS.push({ x: 2 + c * 4, y: 3 + r * 4 });
 
+const CALIBRATE = new URLSearchParams(location.search).has('calibrate');
+let LAYOUT = null; // { width, height, desks:[{x,y}], lounge:{x,y,w,h} } when office-bg.png is used
 let tasks = [], selected = null, scene = null;
 
 function hash(s) { let h = 0; for (const ch of s) h = (h * 31 + ch.charCodeAt(0)) | 0; return Math.abs(h); }
@@ -85,14 +87,50 @@ class Office extends Phaser.Scene {
   preload() {
     this.load.spritesheet('in', '/assets/indoor.png', { frameWidth: T, frameHeight: T, spacing: 1 });
     this.load.spritesheet('ch', '/assets/chars.png', { frameWidth: T, frameHeight: T, spacing: 1 });
+    if (LAYOUT) this.load.image('bg', '/assets/office-bg.png');
   }
   create() {
     scene = this;
     this.agents = this.add.group();
     this.deskMarks = this.add.group();
-    this.drawRoom();
+    if (LAYOUT) {
+      const bg = this.add.image(0, 0, 'bg').setOrigin(0);
+      const sc = Math.min((MAPW * T) / bg.width, (MAPH * T) / bg.height);
+      bg.setScale(sc);
+      this.bgScale = sc;
+      if (CALIBRATE) return this.calibrate();
+    } else {
+      this.drawRoom();
+    }
     this.events.on('tasks', () => this.syncAgents());
     if (tasks.length) this.syncAgents();
+  }
+  // scaled desk positions: pixel coords from layout, or tile-grid defaults
+  deskAt(i) {
+    if (LAYOUT && LAYOUT.desks[i]) {
+      const d = LAYOUT.desks[i];
+      return { seatX: d.x * this.bgScale, seatY: d.y * this.bgScale, labelY: d.y * this.bgScale + 12 };
+    }
+    const d = DESKS[i];
+    return { seatX: d.x * T + 8, seatY: (d.y - 1) * T + 6, labelY: d.y * T + 14, tile: d };
+  }
+  deskCount() { return LAYOUT ? LAYOUT.desks.length : DESKS.length; }
+  calibrate() {
+    const pts = [];
+    const info = this.add.text(4, 4, 'CALIBRATE: click each desk seat in order, then press S to save', { fontSize: '10px', color: '#f5c97b', backgroundColor: '#14141a' });
+    this.input.on('pointerdown', (p) => {
+      const x = Math.round(p.worldX / this.bgScale), y = Math.round(p.worldY / this.bgScale);
+      pts.push({ x, y });
+      this.add.circle(p.worldX, p.worldY, 3, 0x63f2b2);
+      this.add.text(p.worldX + 4, p.worldY - 4, String(pts.length), { fontSize: '9px', color: '#63f2b2' });
+      info.setText('CALIBRATE: ' + pts.length + ' desks marked — press S to save');
+    });
+    this.input.keyboard.on('keydown-S', async () => {
+      const bg = this.textures.get('bg').getSourceImage();
+      await fetch('/api/layout', { method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ width: bg.width, height: bg.height, desks: pts }) });
+      info.setText('saved ' + pts.length + ' desks — reloading'); setTimeout(() => location.href = '/', 600);
+    });
   }
   drawRoom() {
     const g = this.add.graphics();
@@ -138,17 +176,17 @@ class Office extends Phaser.Scene {
   syncAgents() {
     this.agents.clear(true, true);
     this.deskMarks.clear(true, true);
-    const visible = tasks.slice(-DESKS.length);
+    const visible = tasks.slice(-this.deskCount());
     visible.forEach((t, i) => {
-      const d = DESKS[i];
-      const seat = { x: d.x * T + 8, y: (d.y - 1) * T + 6 };
+      const dk = this.deskAt(i);
+      const seat = { x: dk.seatX, y: dk.seatY };
       if (t.status === 'merged' || t.status === 'cancelled') {
-        const mark = this.add.text(seat.x, d.y * T - 2, t.status === 'merged' ? '\\u2713' : '\\u00d7',
+        const mark = this.add.text(seat.x, seat.y + 6, t.status === 'merged' ? '\\u2713' : '\\u00d7',
           { fontFamily: 'monospace', fontSize: '10px', color: STATUS_COLOR[t.status] }).setOrigin(0.5);
         mark.taskId = t.id; mark.setInteractive({ useHandCursor: true });
         mark.on('pointerdown', () => select(t.id));
         this.deskMarks.add(mark);
-        this.addLabel(seat.x, d.y * T + 14, t, this.deskMarks);
+        this.addLabel(seat.x, dk.labelY, t, this.deskMarks);
         return;
       }
       const c = this.add.container(seat.x, seat.y);
@@ -174,9 +212,9 @@ class Office extends Phaser.Scene {
       if (t.status === 'done') {
         this.tweens.add({ targets: c.list[c.list.length - 1], y: -14, duration: 420, yoyo: true, repeat: -1 });
       }
-      this.addLabel(seat.x, d.y * T + 14, t, this.agents);
+      this.addLabel(seat.x, dk.labelY, t, this.agents);
       if (selected === t.id) {
-        const ring = this.add.rectangle(seat.x + 8, d.y * T, 42, 44).setStrokeStyle(1, 0x8fd8ff);
+        const ring = this.add.rectangle(seat.x + 4, seat.y + 8, 42, 44).setStrokeStyle(1, 0x8fd8ff);
         this.deskMarks.add(ring);
       }
     });
@@ -199,12 +237,21 @@ class Office extends Phaser.Scene {
   }
 }
 
-new Phaser.Game({
-  type: Phaser.AUTO, parent: 'game', pixelArt: true, backgroundColor: '#101014',
-  width: MAPW * T, height: MAPH * T,
-  scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
-  scene: Office,
-});
+(async () => {
+  try {
+    const r = await fetch('/assets/office-layout.json');
+    if (r.ok) LAYOUT = await r.json();
+    else if (CALIBRATE && (await fetch('/assets/office-bg.png', { method: 'HEAD' })).ok) {
+      LAYOUT = { desks: [] }; // bg exists but not calibrated yet
+    }
+  } catch {}
+  new Phaser.Game({
+    type: Phaser.AUTO, parent: 'game', pixelArt: true, backgroundColor: '#101014',
+    width: MAPW * T, height: MAPH * T,
+    scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
+    scene: Office,
+  });
+})();
 
 function select(id) { selected = id; openPanel(id); scene && scene.events.emit('tasks'); }
 
