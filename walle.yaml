@@ -1,0 +1,6 @@
+engine: claude
+verify: npm install --no-audit --no-fund && npm run typecheck
+maxRetries: 2
+concurrency: 2
+budget:
+  perTask: 3.00
