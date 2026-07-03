@@ -8,6 +8,7 @@ walle treats agents as cattle, not pets: you don't wake and babysit an agent, yo
 walle do "fix the auth bug"      # queue + run in an isolated worktree
 walle ls                          # status of all tasks
 walle show <id>                   # timeline, cost, files changed
+walle logs <id> --follow          # tail a running task live
 walle diff <id>                   # review the result
 walle merge <id>                  # accept it
 walle cancel <id>                 # kill + clean up
@@ -27,6 +28,7 @@ Requires Node ≥ 20, git, and [Claude Code](https://claude.com/claude-code) on 
 
 ```yaml
 engine: claude
+model: claude-haiku-4-5   # optional — cheap model for simple tasks (or per-task: walle do --model ...)
 verify: npm test          # run after the agent finishes; failures are fed back for retry
 maxRetries: 2
 concurrency: 2

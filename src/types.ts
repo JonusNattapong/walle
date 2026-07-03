@@ -14,6 +14,7 @@ export interface Task {
   branch: string;
   worktree: string;
   status: TaskStatus;
+  model?: string;
   createdAt: string;
   startedAt?: string;
   finishedAt?: string;
@@ -35,6 +36,8 @@ export type WalleEvent =
 
 export interface WalleConfig {
   engine: string;
+  /** Model passed through to the engine (e.g. claude-haiku-4-5 for cheap tasks) */
+  model?: string;
   verify?: string;
   maxRetries: number;
   concurrency: number;

@@ -15,7 +15,7 @@ function quoteForCmd(arg: string): string {
 export const claudeAdapter: EngineAdapter = {
   name: 'claude',
 
-  run({ taskId, prompt, cwd, onEvent }): EngineRun {
+  run({ taskId, prompt, cwd, model, onEvent }): EngineRun {
     const bin = findExecutable('claude');
     if (!bin) {
       onEvent({ type: 'task.started', taskId });
@@ -29,6 +29,7 @@ export const claudeAdapter: EngineAdapter = {
     }
 
     const args = ['-p', prompt, '--output-format', 'stream-json', '--verbose', '--permission-mode', 'acceptEdits'];
+    if (model) args.push('--model', model);
     const useShell = needsShell(bin);
     const child = useShell
       ? spawn(quoteForCmd(bin), args.map(quoteForCmd), { cwd, shell: true, stdio: ['ignore', 'pipe', 'pipe'] })

@@ -17,6 +17,7 @@ export interface EngineAdapter {
     taskId: string;
     prompt: string;
     cwd: string;
+    model?: string;
     onEvent: (e: WalleEvent) => void;
   }): EngineRun;
 }

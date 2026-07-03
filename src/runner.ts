@@ -19,6 +19,7 @@ export function createTask(prompt: string, repo: string, config: WalleConfig): T
     prompt,
     repo,
     engine: config.engine,
+    model: config.model,
     branch: '',
     worktree: '',
     status: 'queued',
@@ -40,8 +41,10 @@ function slugify(prompt: string): string {
   );
 }
 
+export type ProgressListener = (e: WalleEvent) => void;
+
 /** Run one task through its full lifecycle: worktree → engine → verify loop. */
-export async function runTask(task: Task, config: WalleConfig): Promise<Task> {
+export async function runTask(task: Task, config: WalleConfig, onProgress?: ProgressListener): Promise<Task> {
   const adapter = ADAPTERS[task.engine];
   if (!adapter) {
     task.status = 'failed';
@@ -68,6 +71,7 @@ export async function runTask(task: Task, config: WalleConfig): Promise<Task> {
 
   const onEvent = (e: WalleEvent) => {
     appendEvent(e);
+    onProgress?.(e);
     if (e.type === 'cost.updated') {
       task.costUsd = e.costUsd;
       saveTask(task);
@@ -81,7 +85,7 @@ export async function runTask(task: Task, config: WalleConfig): Promise<Task> {
       return finish(task, config, false, `budget exceeded: ${budget.reason}`);
     }
 
-    const run = adapter.run({ taskId: task.id, prompt, cwd: dir, onEvent });
+    const run = adapter.run({ taskId: task.id, prompt, cwd: dir, model: task.model, onEvent });
     task.pid = run.pid;
     saveTask(task);
     const result = await run.done;
@@ -121,13 +125,13 @@ async function finish(task: Task, config: WalleConfig, success: boolean, error?:
 }
 
 /** Run all queued tasks with a concurrency cap. */
-export async function drainQueue(config: WalleConfig): Promise<void> {
+export async function drainQueue(config: WalleConfig, onProgress?: ProgressListener): Promise<void> {
   const queued = listTasks().filter((t) => t.status === 'queued');
   let index = 0;
   const workers = Array.from({ length: Math.max(1, config.concurrency) }, async () => {
     while (index < queued.length) {
       const task = queued[index++];
-      await runTask(task, config);
+      await runTask(task, config, onProgress);
     }
   });
   await Promise.all(workers);

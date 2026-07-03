@@ -5,6 +5,28 @@ import { loadConfig } from './config.js';
 import { listTasks, loadEvents, loadTask, saveTask } from './store.js';
 import { createTask, drainQueue, runTask } from './runner.js';
 import { diffWorktree, mergeBranch, removeWorktree } from './worktree.js';
+import fs from 'node:fs';
+import os from 'node:os';
+import type { WalleEvent } from './types.js';
+
+function formatEvent(e: WalleEvent): string {
+  switch (e.type) {
+    case 'task.started':
+      return `▶ ${e.taskId} started`;
+    case 'agent.message':
+      return `💬 ${e.text.slice(0, 120).replace(/\n/g, ' ')}`;
+    case 'tool.used':
+      return `🔧 ${e.tool}`;
+    case 'file.changed':
+      return `📝 ${e.path}`;
+    case 'cost.updated':
+      return `💲 $${e.costUsd.toFixed(4)}`;
+    case 'agent.blocked':
+      return `⏸ blocked: ${e.reason}`;
+    case 'task.finished':
+      return e.success ? '✅ finished' : `❌ failed: ${e.error}`;
+  }
+}
 
 const program = new Command();
 
@@ -19,15 +41,18 @@ program
   .argument('<prompt>', 'what the agent should do')
   .option('--repo <path>', 'target git repo', process.cwd())
   .option('--engine <name>', 'engine override')
+  .option('--model <name>', 'model override (e.g. claude-haiku-4-5 for cheap tasks)')
   .option('--queue-only', 'queue without running')
-  .action(async (prompt: string, opts: { repo: string; engine?: string; queueOnly?: boolean }) => {
+  .option('-q, --quiet', 'suppress live progress output')
+  .action(async (prompt: string, opts: { repo: string; engine?: string; model?: string; queueOnly?: boolean; quiet?: boolean }) => {
     const repo = path.resolve(opts.repo);
     const config = loadConfig(repo);
     if (opts.engine) config.engine = opts.engine;
+    if (opts.model) config.model = opts.model;
     const task = createTask(prompt, repo, config);
     console.log(`queued ${task.id}: ${prompt}`);
     if (opts.queueOnly) return;
-    await drainQueue(config);
+    await drainQueue(config, opts.quiet ? undefined : (e) => console.log(formatEvent(e)));
     const done = loadTask(task.id)!;
     console.log(`${done.id} → ${done.status}${done.error ? `\n${done.error}` : ''}`);
     if (done.status === 'done') {
@@ -81,25 +106,38 @@ program
     console.log(`cost    $${task.costUsd.toFixed(4)}  retries ${task.retries}`);
     if (task.error) console.log(`error   ${task.error}`);
     console.log('--- timeline ---');
-    for (const e of loadEvents(id)) {
-      switch (e.type) {
-        case 'agent.message':
-          console.log(`💬 ${e.text.slice(0, 120).replace(/\n/g, ' ')}`);
-          break;
-        case 'tool.used':
-          console.log(`🔧 ${e.tool}`);
-          break;
-        case 'file.changed':
-          console.log(`📝 ${e.path}`);
-          break;
-        case 'cost.updated':
-          console.log(`💲 $${e.costUsd.toFixed(4)}`);
-          break;
-        case 'task.finished':
-          console.log(e.success ? '✅ finished' : `❌ failed: ${e.error}`);
-          break;
-        default:
-          console.log(`• ${e.type}`);
+    for (const e of loadEvents(id)) console.log(formatEvent(e));
+  });
+
+program
+  .command('logs')
+  .description('print task events; --follow tails a running task live')
+  .argument('<id>')
+  .option('-f, --follow', 'keep watching for new events until the task finishes')
+  .action(async (id: string, opts: { follow?: boolean }) => {
+    const task = loadTask(id);
+    if (!task) return fail(`no such task: ${id}`);
+    for (const e of loadEvents(id)) console.log(formatEvent(e));
+    if (!opts.follow) return;
+
+    const file = path.join(os.homedir(), '.walle', 'tasks', `${id}.events.jsonl`);
+    let offset = fs.existsSync(file) ? fs.statSync(file).size : 0;
+    while (true) {
+      const t = loadTask(id)!;
+      if (['done', 'failed', 'cancelled'].includes(t.status)) break;
+      await new Promise((r) => setTimeout(r, 1000));
+      if (!fs.existsSync(file)) continue;
+      const size = fs.statSync(file).size;
+      if (size <= offset) continue;
+      const fd = fs.openSync(file, 'r');
+      const buf = Buffer.alloc(size - offset);
+      fs.readSync(fd, buf, 0, buf.length, offset);
+      fs.closeSync(fd);
+      offset = size;
+      for (const line of buf.toString('utf8').split('\n').filter(Boolean)) {
+        try {
+          console.log(formatEvent(JSON.parse(line)));
+        } catch {}
       }
     }
   });
