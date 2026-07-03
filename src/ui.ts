@@ -1,29 +1,32 @@
 /**
- * The dashboard is a single self-contained HTML page (no build step, no
- * frontend framework) served from memory. Pixel office rendered on canvas;
- * data via /api/*, live refresh via SSE.
+ * Agent-town style dashboard: Phaser 3 renders a top-down pixel office from
+ * Kenney CC0 tilesheets (assets/); one character per task, posture/bubble =
+ * status. Data via /api/*, live refresh via SSE. Single page, no build step.
  */
 export const DASHBOARD_HTML = /* html */ `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>walle — office floor</title>
+<title>walle — agent office</title>
 <style>
   :root { --bg:#17171d; --panel:#1f1f28; --line:#33333f; --text:#e8e8ee; --dim:#9a9aa8;
           --green:#63f2b2; --amber:#f5c97b; --red:#f07373; --blue:#8fd8ff; }
   * { box-sizing: border-box; }
-  body { margin:0; background:var(--bg); color:var(--text); font-family:'Segoe UI',system-ui,sans-serif; }
-  header { display:flex; align-items:center; gap:14px; padding:12px 20px; border-bottom:1px solid var(--line); }
-  header h1 { font-size:16px; margin:0; font-family:monospace; }
-  header .badges { display:flex; gap:8px; font-family:monospace; font-size:12px; }
-  .badge { padding:2px 8px; border-radius:4px; background:var(--panel); border:1px solid var(--line); }
-  main { display:flex; gap:0; height:calc(100vh - 49px); }
-  #floor { flex:1; min-width:0; overflow:auto; padding:16px; }
-  canvas { image-rendering:pixelated; display:block; margin:0 auto; cursor:pointer; max-width:100%; }
-  aside { width:420px; border-left:1px solid var(--line); background:var(--panel); display:flex; flex-direction:column; }
-  aside .head { padding:12px 16px; border-bottom:1px solid var(--line); font-family:monospace; font-size:13px; }
-  aside .body { flex:1; overflow:auto; padding:12px 16px; font-family:monospace; font-size:12px; line-height:1.7; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family:monospace; overflow:hidden; }
+  header { display:flex; align-items:center; gap:14px; padding:8px 16px; border-bottom:1px solid var(--line); height:52px; }
+  header h1 { font-size:15px; margin:0; letter-spacing:2px; color:#f5c97b; }
+  #agents { display:flex; gap:8px; overflow:hidden; }
+  .chip { display:flex; align-items:center; gap:6px; background:var(--panel); border:1px solid var(--line);
+          border-radius:6px; padding:3px 10px 3px 4px; font-size:12px; cursor:pointer; }
+  .chip:hover { border-color:#555; }
+  .chip canvas { width:24px; height:24px; image-rendering:pixelated; }
+  .dot { width:7px; height:7px; border-radius:50%; }
+  main { display:flex; height:calc(100vh - 53px); }
+  #game { flex:1; min-width:0; display:flex; align-items:center; justify-content:center; background:#101014; }
+  aside { width:400px; border-left:1px solid var(--line); background:var(--panel); display:flex; flex-direction:column; }
+  aside .head { padding:10px 16px; border-bottom:1px solid var(--line); font-size:13px; }
+  aside .body { flex:1; overflow:auto; padding:12px 16px; font-size:12px; line-height:1.7; }
   aside .actions { padding:10px 16px; border-top:1px solid var(--line); display:flex; gap:8px; }
   button { background:#2a2a36; color:var(--text); border:1px solid var(--line); border-radius:6px;
            padding:6px 14px; font-size:12px; cursor:pointer; font-family:monospace; }
@@ -42,100 +45,201 @@ export const DASHBOARD_HTML = /* html */ `<!doctype html>
 </head>
 <body>
 <header>
-  <h1>walle <span class="muted">— office floor</span></h1>
-  <div class="badges" id="badges"></div>
-  <div style="margin-left:auto" class="badges"><span class="badge" id="cost-today"></span></div>
+  <h1>WALLE OFFICE</h1>
+  <div id="agents"></div>
+  <div style="margin-left:auto; font-size:12px;" class="muted" id="cost-today"></div>
 </header>
 <main>
-  <div id="floor"><canvas id="cv"></canvas></div>
+  <div id="game"></div>
   <aside>
-    <div class="head" id="panel-title">click a desk to inspect a task</div>
-    <div class="body" id="panel-body"><span class="muted">Each desk is one task. Green screen = working, sign = done, raised hand = blocked, smoke = failed.</span></div>
+    <div class="head" id="panel-title">click a character to inspect their task</div>
+    <div class="body" id="panel-body"><span class="muted">One character per task. Typing = running, check bubble = done for review, ? = blocked, ! = failed. Empty desk = merged.</span></div>
     <div class="actions" id="panel-actions"></div>
     <form id="newtask">
-      <input id="prompt" placeholder="new task prompt — runs in an isolated worktree" autocomplete="off">
+      <input id="prompt" placeholder="hire an agent — new task prompt" autocomplete="off">
       <button class="primary" type="submit">walle do</button>
     </form>
   </aside>
 </main>
+<script src="https://cdn.jsdelivr.net/npm/phaser@3.87.0/dist/phaser.min.js"></script>
 <script>
-const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
-const S = 3;              // pixel scale
-const DESK_W = 100, DESK_H = 96, COLS_MAX = 6;
-let tasks = [], selected = null, frame = 0, deskRects = [];
-
+const T = 16, MAPW = 26, MAPH = 15;
+const F = { WOOD:24, CARPET:132, DESK:139, DESK2:140, CHAIR_D:54, CHAIR_U:55,
+            TABLE_L:166, TABLE_M:167, TABLE_R:168, SOFA_L:270, SOFA_R:271,
+            PLANT:16, PLANT2:17, SHELF_A:331, SHELF_B:332, SHELF_C:333, FRIDGE:216, STOVE:217 };
+const BODIES = [0, 54, 108, 162];
+const SHIRTS = [6, 10, 15, 172, 226, 276, 330];
 const STATUS_COLOR = { queued:'#9a9aa8', running:'#63f2b2', verifying:'#f5c97b',
                        done:'#97c459', merged:'#8fd8ff', failed:'#f07373', cancelled:'#666672' };
+const BUBBLE = { running:null, verifying:'…', queued:'z', done:'\\u2713', failed:'!', blocked:'?' };
 
-function px(x, y, w, h, c) { ctx.fillStyle = c; ctx.fillRect(x*S, y*S, w*S, h*S); }
+// desk slots (tile coords): 4 columns x 3 rows in the work room
+const DESKS = [];
+for (let r = 0; r < 3; r++) for (let c = 0; c < 4; c++) DESKS.push({ x: 2 + c * 4, y: 3 + r * 4 });
 
-function drawDesk(ox, oy, t, blink) {
-  const st = t.status;
-  px(ox+4, oy+16, 26, 3, '#7a5c3e');                       // desktop
-  px(ox+6, oy+19, 2, 8, '#5c452e'); px(ox+26, oy+19, 2, 8, '#5c452e');
-  // monitor
-  px(ox+16, oy+7, 12, 8, '#101018');
-  const scr = st==='running' ? (blink ? '#63f2b2' : '#3fcf92')
-            : st==='verifying' ? (blink ? '#f5c97b' : '#d8a854')
-            : st==='done' ? '#97c459' : st==='merged' ? '#8fd8ff' : st==='failed' ? '#e24b4a'
-            : st==='cancelled' ? '#3a3a46' : '#2a2a36';
-  px(ox+17, oy+8, 10, 6, scr);
-  // robot
-  const body = st==='failed' ? '#9aa0ac' : '#c9cdd6';
-  px(ox+9, oy+6, 4, 3, body);                               // head
-  px(ox+10, oy+7, 1, 1, st==='cancelled' ? '#555' : '#2a6bd8'); // eye
-  px(ox+8, oy+9, 6, 5, body);                               // torso
-  px(ox+9, oy+14, 4, 5, '#8b93a3');                         // base
-  if (st==='running' || st==='verifying') px(ox+14, oy+11+(blink?0:1), 3, 1, body); // typing arm
-  if (st==='done') { px(ox+5, oy+1, 9, 5, '#63f2b2'); px(ox+8, oy+2, 3, 3, '#0f3d26'); px(ox+9, oy+6, 1, 3, body); }
-  if (st==='queued') { if (blink) px(ox+14, oy+3, 2, 2, '#9a9aa8'); px(ox+16, oy+1, 2, 2, '#9a9aa8'); }
-  if (t.status==='failed') { if (blink) px(ox+10, oy+2, 2, 2, '#777'); px(ox+12, oy+0, 2, 2, '#999'); }
-  if (t._blocked) { px(ox+5, oy+3, 2, 6, body); px(ox+3, oy+0, 5, 4, '#f5c97b'); }
+let tasks = [], selected = null, scene = null;
+
+function hash(s) { let h = 0; for (const ch of s) h = (h * 31 + ch.charCodeAt(0)) | 0; return Math.abs(h); }
+
+class Office extends Phaser.Scene {
+  preload() {
+    this.load.spritesheet('in', '/assets/indoor.png', { frameWidth: T, frameHeight: T, spacing: 1 });
+    this.load.spritesheet('ch', '/assets/chars.png', { frameWidth: T, frameHeight: T, spacing: 1 });
+  }
+  create() {
+    scene = this;
+    this.agents = this.add.group();
+    this.deskMarks = this.add.group();
+    this.drawRoom();
+    this.events.on('tasks', () => this.syncAgents());
+    if (tasks.length) this.syncAgents();
+  }
+  drawRoom() {
+    const g = this.add.graphics();
+    g.fillStyle(0x2a2a36).fillRect(0, 0, MAPW * T, MAPH * T);
+    // floors: work room (wood) + lounge (carpet)
+    for (let y = 1; y < MAPH - 1; y++) for (let x = 1; x < MAPW - 1; x++) {
+      const lounge = x >= 18;
+      this.add.image(x * T + 8, y * T + 8, 'in', lounge ? F.CARPET : F.WOOD);
+    }
+    // walls
+    const wall = this.add.graphics();
+    wall.fillStyle(0x3a3a46);
+    wall.fillRect(0, 0, MAPW * T, T).fillRect(0, 0, T, MAPH * T)
+        .fillRect((MAPW - 1) * T, 0, T, MAPH * T).fillRect(0, (MAPH - 1) * T, MAPW * T, T);
+    wall.fillRect(17 * T, T, 4, 5 * T).fillRect(17 * T, 9 * T, 4, 5 * T); // room divider w/ door gap
+    wall.fillStyle(0x50505e);
+    wall.fillRect(0, 0, MAPW * T, 4);
+    // shelf strip on top wall of work room
+    for (let x = 2; x <= 6; x++) this.add.image(x * T + 8, T + 8, 'in', [F.SHELF_A, F.SHELF_B, F.SHELF_C][x % 3]);
+    this.add.image(8 * T + 8, T + 8, 'in', F.FRIDGE);
+    this.add.image(9 * T + 8, T + 8, 'in', F.STOVE);
+    // lounge furniture
+    this.add.image(20 * T + 8, 3 * T + 8, 'in', F.SOFA_L);
+    this.add.image(21 * T + 8, 3 * T + 8, 'in', F.SOFA_R);
+    this.add.image(23 * T + 8, 2 * T + 8, 'in', F.PLANT);
+    this.add.image(19 * T + 8, 2 * T + 8, 'in', F.PLANT2);
+    // meeting table bottom-right
+    this.add.image(20 * T + 8, 11 * T + 8, 'in', F.TABLE_L);
+    this.add.image(21 * T + 8, 11 * T + 8, 'in', F.TABLE_M);
+    this.add.image(22 * T + 8, 11 * T + 8, 'in', F.TABLE_R);
+    this.add.image(20 * T + 8, 10 * T + 8, 'in', F.CHAIR_D);
+    this.add.image(22 * T + 8, 10 * T + 8, 'in', F.CHAIR_D);
+    this.add.image(21 * T + 8, 12 * T + 8, 'in', F.CHAIR_U);
+    this.add.image(24 * T + 8, 13 * T + 8, 'in', F.PLANT);
+    this.add.image(1 * T + 8, 13 * T + 8, 'in', F.PLANT2);
+    // desks
+    for (const d of DESKS) {
+      this.add.image(d.x * T + 8, d.y * T + 8, 'in', F.DESK);
+      this.add.image((d.x + 1) * T + 8, d.y * T + 8, 'in', F.DESK2);
+      this.add.image(d.x * T + 8, (d.y - 1) * T + 8, 'in', F.CHAIR_U);
+    }
+  }
+  syncAgents() {
+    this.agents.clear(true, true);
+    this.deskMarks.clear(true, true);
+    const visible = tasks.slice(-DESKS.length);
+    visible.forEach((t, i) => {
+      const d = DESKS[i];
+      const seat = { x: d.x * T + 8, y: (d.y - 1) * T + 6 };
+      if (t.status === 'merged' || t.status === 'cancelled') {
+        const mark = this.add.text(seat.x, d.y * T - 2, t.status === 'merged' ? '\\u2713' : '\\u00d7',
+          { fontFamily: 'monospace', fontSize: '10px', color: STATUS_COLOR[t.status] }).setOrigin(0.5);
+        mark.taskId = t.id; mark.setInteractive({ useHandCursor: true });
+        mark.on('pointerdown', () => select(t.id));
+        this.deskMarks.add(mark);
+        this.addLabel(seat.x, d.y * T + 14, t, this.deskMarks);
+        return;
+      }
+      const c = this.add.container(seat.x, seat.y);
+      const body = this.add.image(0, 0, 'ch', BODIES[hash(t.id) % BODIES.length]);
+      const shirt = this.add.image(0, 0, 'ch', SHIRTS[hash(t.id + 'x') % SHIRTS.length]);
+      c.add([body, shirt]);
+      if (t.status === 'failed') { body.setTint(0x999999); shirt.setTint(0x777777); }
+      const bubbleChar = t._blocked ? BUBBLE.blocked : BUBBLE[t.status];
+      if (bubbleChar) {
+        const bg = this.add.circle(9, -11, 6, 0x14141a).setStrokeStyle(1,
+          Phaser.Display.Color.HexStringToColor(t._blocked ? '#f5c97b' : STATUS_COLOR[t.status]).color);
+        const tx = this.add.text(9, -11, bubbleChar, { fontFamily: 'monospace', fontSize: '9px',
+          color: t._blocked ? '#f5c97b' : STATUS_COLOR[t.status] }).setOrigin(0.5);
+        c.add([bg, tx]);
+      }
+      c.setSize(T, T).setInteractive({ useHandCursor: true });
+      c.on('pointerdown', () => select(t.id));
+      this.agents.add(c);
+      if (t.status === 'running' || t.status === 'verifying') {
+        this.tweens.add({ targets: c, y: seat.y - 1, duration: 260, yoyo: true, repeat: -1 });
+      }
+      if (t.status === 'queued') this.wander(c, seat);
+      if (t.status === 'done') {
+        this.tweens.add({ targets: c.list[c.list.length - 1], y: -14, duration: 420, yoyo: true, repeat: -1 });
+      }
+      this.addLabel(seat.x, d.y * T + 14, t, this.agents);
+      if (selected === t.id) {
+        const ring = this.add.rectangle(seat.x + 8, d.y * T, 42, 44).setStrokeStyle(1, 0x8fd8ff);
+        this.deskMarks.add(ring);
+      }
+    });
+  }
+  addLabel(x, y, t, group) {
+    const label = this.add.text(x + 8, y, t.id, { fontFamily: 'monospace', fontSize: '8px',
+      color: '#d9dce4', backgroundColor: '#14141acc', padding: { x: 2, y: 1 } }).setOrigin(0.5, 0);
+    const st = this.add.text(x + 8, y + 10, t.status + (t.costUsd ? ' $' + t.costUsd.toFixed(2) : ''),
+      { fontFamily: 'monospace', fontSize: '8px', color: STATUS_COLOR[t.status] }).setOrigin(0.5, 0);
+    group.add(label); group.add(st);
+  }
+  wander(c, home) {
+    const hop = () => {
+      if (!c.active) return;
+      const nx = Phaser.Math.Clamp(home.x + Phaser.Math.Between(-20, 20), 24, (MAPW - 2) * T);
+      const ny = Phaser.Math.Clamp(home.y + Phaser.Math.Between(-14, 14), 24, (MAPH - 2) * T);
+      this.tweens.add({ targets: c, x: nx, y: ny, duration: 700, onComplete: () => this.time.delayedCall(Phaser.Math.Between(600, 1800), hop) });
+    };
+    hop();
+  }
 }
 
-function layout() {
-  const cols = Math.min(COLS_MAX, Math.max(1, tasks.length));
-  const rows = Math.max(1, Math.ceil(tasks.length / cols));
-  cv.width = cols * DESK_W + 40; cv.height = rows * DESK_H + 60;
-}
-
-function render() {
-  ctx.fillStyle = '#232330'; ctx.fillRect(0, 0, cv.width, cv.height);
-  ctx.fillStyle = '#2c2c38'; ctx.fillRect(0, 0, cv.width, 30);
-  deskRects = [];
-  const blink = frame % 2 === 0;
-  const cols = Math.min(COLS_MAX, Math.max(1, tasks.length));
-  tasks.forEach((t, i) => {
-    const gx = 20 + (i % cols) * DESK_W, gy = 44 + Math.floor(i / cols) * DESK_H;
-    if (selected === t.id) { ctx.strokeStyle = '#8fd8ff'; ctx.lineWidth = 2; ctx.strokeRect(gx-6, gy-8, DESK_W-10, DESK_H-14); }
-    drawDesk(Math.floor(gx/S), Math.floor(gy/S), t, blink);
-    ctx.fillStyle = '#d9dce4'; ctx.font = '12px monospace'; ctx.textAlign = 'center';
-    ctx.fillText(t.id, gx + 42, gy + 66);
-    ctx.fillStyle = STATUS_COLOR[t.status] || '#9a9aa8'; ctx.font = '11px monospace';
-    const cost = t.costUsd ? ' $' + t.costUsd.toFixed(2) : '';
-    ctx.fillText(t.status + cost, gx + 42, gy + 80);
-    deskRects.push({ x: gx-6, y: gy-8, w: DESK_W-10, h: DESK_H-14, id: t.id });
-  });
-  if (!tasks.length) { ctx.fillStyle = '#9a9aa8'; ctx.font = '13px monospace'; ctx.textAlign = 'center';
-    ctx.fillText('office is empty — queue a task below', cv.width/2, cv.height/2); }
-}
-
-cv.addEventListener('click', (e) => {
-  const r = cv.getBoundingClientRect();
-  const x = (e.clientX - r.left) * (cv.width / r.width), y = (e.clientY - r.top) * (cv.height / r.height);
-  const hit = deskRects.find(d => x >= d.x && x <= d.x + d.w && y >= d.y && y <= d.y + d.h);
-  if (hit) { selected = hit.id; openPanel(hit.id); render(); }
+new Phaser.Game({
+  type: Phaser.AUTO, parent: 'game', pixelArt: true, backgroundColor: '#101014',
+  width: MAPW * T, height: MAPH * T,
+  scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
+  scene: Office,
 });
+
+function select(id) { selected = id; openPanel(id); scene && scene.events.emit('tasks'); }
+
+function chipAvatar(t) {
+  const cv = document.createElement('canvas'); cv.width = 16; cv.height = 16;
+  const x = cv.getContext('2d'); x.imageSmoothingEnabled = false;
+  const img = new Image(); img.src = '/assets/chars.png';
+  img.onload = () => {
+    const draw = (idx) => { const c = idx % 54, r = Math.floor(idx / 54); x.drawImage(img, c * 17, r * 17, 16, 16, 0, 0, 16, 16); };
+    draw(BODIES[hash(t.id) % BODIES.length]); draw(SHIRTS[hash(t.id + 'x') % SHIRTS.length]);
+  };
+  return cv;
+}
 
 async function refresh() {
   tasks = await (await fetch('/api/tasks')).json();
-  const counts = {};
-  let today = 0; const day = new Date().toISOString().slice(0,10);
-  for (const t of tasks) { counts[t.status] = (counts[t.status]||0)+1; if (t.createdAt.startsWith(day)) today += t.costUsd; }
-  document.getElementById('badges').innerHTML = Object.entries(counts)
-    .map(([s,n]) => '<span class="badge" style="color:' + (STATUS_COLOR[s]||'#9a9aa8') + '">' + n + ' ' + s + '</span>').join('');
+  await Promise.all(tasks.filter(t => t.status === 'running').map(async (t) => {
+    const r = await fetch('/api/tasks/' + t.id);
+    if (r.ok) { const { events } = await r.json(); t._blocked = events.some(e => e.type === 'agent.blocked'); }
+  }));
+  const bar = document.getElementById('agents');
+  bar.innerHTML = '';
+  for (const t of tasks.slice(-6).reverse()) {
+    const chip = document.createElement('div'); chip.className = 'chip';
+    chip.appendChild(chipAvatar(t));
+    const name = document.createElement('span'); name.textContent = t.id; chip.appendChild(name);
+    const dot = document.createElement('span'); dot.className = 'dot';
+    dot.style.background = STATUS_COLOR[t.status] || '#9a9aa8'; chip.appendChild(dot);
+    chip.onclick = () => select(t.id);
+    bar.appendChild(chip);
+  }
+  let today = 0; const day = new Date().toISOString().slice(0, 10);
+  for (const t of tasks) if (t.createdAt.startsWith(day)) today += t.costUsd;
   document.getElementById('cost-today').textContent = 'today $' + today.toFixed(2);
-  layout(); render();
+  scene && scene.events.emit('tasks');
   if (selected) openPanel(selected, true);
 }
 
@@ -146,7 +250,6 @@ async function openPanel(id, silent) {
   const r = await fetch('/api/tasks/' + id);
   if (!r.ok) return;
   const { task, events } = await r.json();
-  task._blocked = events.some(e => e.type === 'agent.blocked') && task.status === 'running';
   document.getElementById('panel-title').textContent = task.id + ' — ' + task.status;
   const rows = events.map(e => {
     const txt = e.type==='agent.message' ? e.text : e.type==='tool.used' ? e.tool
@@ -200,7 +303,6 @@ document.getElementById('newtask').addEventListener('submit', async (e) => {
 });
 
 new EventSource('/api/stream').onmessage = () => refresh();
-setInterval(() => { frame++; render(); }, 600);
 refresh();
 </script>
 </body>

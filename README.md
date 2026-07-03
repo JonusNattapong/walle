@@ -17,7 +17,7 @@ walle serve                       # web dashboard — pixel office floor on :471
 
 ## Dashboard
 
-`walle serve` opens a live pixel-office view: one desk per task, robot posture = status (typing = running, sign = done, raised hand = blocked, smoke = failed). Click a desk for the timeline and diff; merge, discard, and queue new tasks straight from the page. Live updates via SSE — no build step, no frontend framework.
+`walle serve` opens a live agent-town office rendered with [Phaser 3](https://phaser.io) and [Kenney](https://kenney.nl) CC0 pixel art: one character per task sitting at a desk, posture and speech bubble = status (typing = running, &check; = done for review, ? = blocked, ! = failed, empty desk = merged). Header shows an avatar chip per agent. Click a character for the timeline and diff; merge, discard, and hire new agents straight from the page. Live updates via SSE.
 
 ## Setup
 
