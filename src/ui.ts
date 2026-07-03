@@ -133,46 +133,62 @@ class Office extends Phaser.Scene {
     });
   }
   drawRoom() {
-    const g = this.add.graphics();
-    g.fillStyle(0x2a2a36).fillRect(0, 0, MAPW * T, MAPH * T);
-    // floors: work room (wood) + lounge (carpet)
+    const px = (x) => x * T + 8;
+    // floor: wood everywhere, muted
     for (let y = 1; y < MAPH - 1; y++) for (let x = 1; x < MAPW - 1; x++) {
-      const lounge = x >= 18;
-      this.add.image(x * T + 8, y * T + 8, 'in', lounge ? F.CARPET : F.WOOD);
+      this.add.image(px(x), px(y), 'in', F.WOOD);
     }
-    // walls
+    this.add.rectangle(0, 0, MAPW * T * 2, MAPH * T * 2, 0x1a1a22, 0.32); // mute the palette
+    // lounge rug
+    for (let y = 2; y < 7; y++) for (let x = 19; x < 25; x++) {
+      const c = this.add.image(px(x), px(y), 'in', F.CARPET);
+      c.setAlpha(0.85);
+    }
+    // walls: two-tone with baseboard
     const wall = this.add.graphics();
-    wall.fillStyle(0x3a3a46);
+    wall.fillStyle(0x3c3c48);
     wall.fillRect(0, 0, MAPW * T, T).fillRect(0, 0, T, MAPH * T)
         .fillRect((MAPW - 1) * T, 0, T, MAPH * T).fillRect(0, (MAPH - 1) * T, MAPW * T, T);
-    wall.fillRect(17 * T, T, 4, 5 * T).fillRect(17 * T, 9 * T, 4, 5 * T); // room divider w/ door gap
-    wall.fillStyle(0x50505e);
-    wall.fillRect(0, 0, MAPW * T, 4);
-    // shelf strip on top wall of work room
-    for (let x = 2; x <= 6; x++) this.add.image(x * T + 8, T + 8, 'in', [F.SHELF_A, F.SHELF_B, F.SHELF_C][x % 3]);
-    this.add.image(8 * T + 8, T + 8, 'in', F.FRIDGE);
-    this.add.image(9 * T + 8, T + 8, 'in', F.STOVE);
+    wall.fillStyle(0x2c2c36).fillRect(0, 0, MAPW * T, 6);
+    wall.fillStyle(0x55556a);
+    wall.fillRect(0, T - 3, MAPW * T, 3); // baseboard highlight
+    wall.fillStyle(0x3c3c48).fillRect(17 * T + 4, T, 6, 5 * T).fillRect(17 * T + 4, 9 * T, 6, 5 * T);
+    // windows on the top wall
+    for (const wx of [3, 7, 12, 20, 23]) {
+      this.add.rectangle(wx * T + 8, 7, 22, 10, 0x9fd3f5).setStrokeStyle(1, 0x222230);
+    }
+    // pictures + shelf strip
+    this.add.rectangle(10 * T + 2, 8, 10, 8, 0xd88a4a).setStrokeStyle(1, 0x222230);
+    this.add.rectangle(15 * T + 2, 8, 10, 8, 0x63b28a).setStrokeStyle(1, 0x222230);
+    for (let x = 2; x <= 5; x++) this.add.image(px(x), px(1), 'in', [F.SHELF_A, F.SHELF_B, F.SHELF_C][x % 3]);
+    this.add.image(px(8), px(1), 'in', F.FRIDGE);
+    this.add.image(px(9), px(1), 'in', F.STOVE);
     // lounge furniture
-    this.add.image(20 * T + 8, 3 * T + 8, 'in', F.SOFA_L);
-    this.add.image(21 * T + 8, 3 * T + 8, 'in', F.SOFA_R);
-    this.add.image(23 * T + 8, 2 * T + 8, 'in', F.PLANT);
-    this.add.image(19 * T + 8, 2 * T + 8, 'in', F.PLANT2);
-    // meeting table bottom-right
-    this.add.image(20 * T + 8, 11 * T + 8, 'in', F.TABLE_L);
-    this.add.image(21 * T + 8, 11 * T + 8, 'in', F.TABLE_M);
-    this.add.image(22 * T + 8, 11 * T + 8, 'in', F.TABLE_R);
-    this.add.image(20 * T + 8, 10 * T + 8, 'in', F.CHAIR_D);
-    this.add.image(22 * T + 8, 10 * T + 8, 'in', F.CHAIR_D);
-    this.add.image(21 * T + 8, 12 * T + 8, 'in', F.CHAIR_U);
-    this.add.image(24 * T + 8, 13 * T + 8, 'in', F.PLANT);
-    this.add.image(1 * T + 8, 13 * T + 8, 'in', F.PLANT2);
-    // desks
+    this.shadow(20 * T + 16, 4 * T);
+    this.add.image(px(20), px(3), 'in', F.SOFA_L);
+    this.add.image(px(21), px(3), 'in', F.SOFA_R);
+    this.add.image(px(23), px(2), 'in', F.PLANT);
+    this.add.image(px(19), px(2), 'in', F.PLANT2);
+    this.add.image(px(24), px(5), 'in', F.PLANT);
+    // meeting room bottom-right
+    this.shadow(21 * T + 8, 12 * T);
+    this.add.image(px(20), px(11), 'in', F.TABLE_L);
+    this.add.image(px(21), px(11), 'in', F.TABLE_M);
+    this.add.image(px(22), px(11), 'in', F.TABLE_R);
+    this.add.image(px(20), px(10), 'in', F.CHAIR_D);
+    this.add.image(px(22), px(10), 'in', F.CHAIR_D);
+    this.add.image(px(21), px(12), 'in', F.CHAIR_U);
+    this.add.image(px(24), px(13), 'in', F.PLANT);
+    this.add.image(px(1), px(13), 'in', F.PLANT2);
+    // desks with shadows
     for (const d of DESKS) {
-      this.add.image(d.x * T + 8, d.y * T + 8, 'in', F.DESK);
-      this.add.image((d.x + 1) * T + 8, d.y * T + 8, 'in', F.DESK2);
-      this.add.image(d.x * T + 8, (d.y - 1) * T + 8, 'in', F.CHAIR_U);
+      this.shadow(d.x * T + 16, (d.y + 1) * T - 4);
+      this.add.image(px(d.x), px(d.y), 'in', F.DESK);
+      this.add.image(px(d.x + 1), px(d.y), 'in', F.DESK2);
+      this.add.image(px(d.x), px(d.y - 1), 'in', F.CHAIR_U);
     }
   }
+  shadow(cx, cy) { this.add.ellipse(cx, cy, 34, 8, 0x000000, 0.18); }
   syncAgents() {
     this.agents.clear(true, true);
     this.deskMarks.clear(true, true);
