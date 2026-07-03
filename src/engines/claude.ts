@@ -2,6 +2,11 @@ import { spawn } from 'node:child_process';
 import readline from 'node:readline';
 import type { EngineAdapter, EngineRun } from './adapter.js';
 import type { WalleEvent } from '../types.js';
+import { findExecutable, needsShell } from '../exec-utils.js';
+
+function quoteForCmd(arg: string): string {
+  return `"${arg.replace(/"/g, '""')}"`;
+}
 
 /**
  * Runs Claude Code headless (`claude -p --output-format stream-json`) and
@@ -11,11 +16,23 @@ export const claudeAdapter: EngineAdapter = {
   name: 'claude',
 
   run({ taskId, prompt, cwd, onEvent }): EngineRun {
-    const child = spawn(
-      'claude',
-      ['-p', prompt, '--output-format', 'stream-json', '--verbose', '--permission-mode', 'acceptEdits'],
-      { cwd, shell: process.platform === 'win32', stdio: ['ignore', 'pipe', 'pipe'] },
-    );
+    const bin = findExecutable('claude');
+    if (!bin) {
+      onEvent({ type: 'task.started', taskId });
+      return {
+        done: Promise.resolve({
+          success: false,
+          error: 'claude CLI not found on PATH (also checked ~/.local/bin and npm global bin) — install Claude Code first',
+        }),
+        kill: () => {},
+      };
+    }
+
+    const args = ['-p', prompt, '--output-format', 'stream-json', '--verbose', '--permission-mode', 'acceptEdits'];
+    const useShell = needsShell(bin);
+    const child = useShell
+      ? spawn(quoteForCmd(bin), args.map(quoteForCmd), { cwd, shell: true, stdio: ['ignore', 'pipe', 'pipe'] })
+      : spawn(bin, args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] });
 
     onEvent({ type: 'task.started', taskId });
 
