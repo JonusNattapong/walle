@@ -163,6 +163,8 @@ program
     if (task.status !== 'done') return fail(`task ${id} is ${task.status}, not done`);
     await mergeBranch(task.repo, task.branch);
     await removeWorktree(task.repo, task.worktree, task.branch);
+    task.status = 'merged';
+    saveTask(task);
     console.log(`merged ${task.branch} and cleaned up worktree`);
   });
 
@@ -182,6 +184,16 @@ program
     task.status = 'cancelled';
     saveTask(task);
     console.log(`cancelled ${task.id}`);
+  });
+
+program
+  .command('serve')
+  .description('start the web dashboard (pixel office floor)')
+  .option('--port <n>', 'port', '4711')
+  .option('--repo <path>', 'default repo for tasks created from the UI', process.cwd())
+  .action(async (opts: { port: string; repo: string }) => {
+    const { startServer } = await import('./server.js');
+    startServer(Number(opts.port), path.resolve(opts.repo));
   });
 
 program

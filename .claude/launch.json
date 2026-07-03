@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "walle-dashboard",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["dist/cli.js", "serve", "--port", "4711"],
+      "port": 4711
+    }
+  ]
+}

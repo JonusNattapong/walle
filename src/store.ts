@@ -4,7 +4,7 @@ import path from 'node:path';
 import type { Task, WalleEvent } from './types.js';
 
 const ROOT = path.join(os.homedir(), '.walle');
-const TASKS_DIR = path.join(ROOT, 'tasks');
+export const TASKS_DIR = path.join(ROOT, 'tasks');
 
 function ensureDirs(): void {
   fs.mkdirSync(TASKS_DIR, { recursive: true });
