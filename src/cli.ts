@@ -44,13 +44,14 @@ program
   .option('--model <name>', 'model override (e.g. claude-haiku-4-5 for cheap tasks)')
   .option('--queue-only', 'queue without running')
   .option('-q, --quiet', 'suppress live progress output')
-  .action(async (prompt: string, opts: { repo: string; engine?: string; model?: string; queueOnly?: boolean; quiet?: boolean }) => {
+  .option('-v, --visible', 'open agent in a visible terminal window')
+  .action(async (prompt: string, opts: { repo: string; engine?: string; model?: string; queueOnly?: boolean; quiet?: boolean; visible?: boolean }) => {
     const repo = path.resolve(opts.repo);
     const config = loadConfig(repo);
     if (opts.engine) config.engine = opts.engine;
     if (opts.model) config.model = opts.model;
-    const task = createTask(prompt, repo, config);
-    console.log(`queued ${task.id}: ${prompt}`);
+    const task = createTask(prompt, repo, config, opts.visible);
+    console.log(`queued ${task.id}: ${opts.visible ? '(visible) ' : ''}${prompt}`);
     if (opts.queueOnly) return;
     await drainQueue(config, opts.quiet ? undefined : (e) => console.log(formatEvent(e)));
     const done = loadTask(task.id)!;
@@ -187,13 +188,23 @@ program
   });
 
 program
+  .command('mcp')
+  .description('start the MCP stdio server (connect via MCP client)')
+  .option('--repo <path>', 'default repo path', process.cwd())
+  .action(async (opts: { repo: string }) => {
+    const { startMcpServer } = await import('./mcp-server.js');
+    await startMcpServer(path.resolve(opts.repo));
+  });
+
+program
   .command('serve')
   .description('start the web dashboard (pixel office floor)')
   .option('--port <n>', 'port', '4711')
   .option('--repo <path>', 'default repo for tasks created from the UI', process.cwd())
-  .action(async (opts: { port: string; repo: string }) => {
+  .option('--mcp', 'also serve MCP over HTTP (agents connect to /mcp)')
+  .action(async (opts: { port: string; repo: string; mcp?: boolean }) => {
     const { startServer } = await import('./server.js');
-    startServer(Number(opts.port), path.resolve(opts.repo));
+    await startServer(Number(opts.port), path.resolve(opts.repo), opts.mcp);
   });
 
 program

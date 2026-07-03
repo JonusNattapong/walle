@@ -15,3 +15,30 @@ export function loadConfig(repo: string): WalleConfig {
     notify: raw.notify,
   };
 }
+
+export function saveConfig(repo: string, config: WalleConfig): void {
+  const file = path.join(repo, 'walle.yaml');
+  const raw: any = {
+    engine: config.engine,
+    maxRetries: Number(config.maxRetries),
+    concurrency: Number(config.concurrency),
+  };
+  if (config.model) raw.model = config.model;
+  if (config.verify) raw.verify = config.verify;
+  if (config.budget) {
+    raw.budget = {};
+    if (config.budget.perTask !== undefined && config.budget.perTask !== null && !isNaN(config.budget.perTask)) {
+      raw.budget.perTask = Number(config.budget.perTask);
+    }
+    if (config.budget.perDay !== undefined && config.budget.perDay !== null && !isNaN(config.budget.perDay)) {
+      raw.budget.perDay = Number(config.budget.perDay);
+    }
+  }
+  if (config.notify) {
+    raw.notify = {};
+    if (config.notify.webhook !== undefined) {
+      raw.notify.webhook = config.notify.webhook;
+    }
+  }
+  fs.writeFileSync(file, YAML.stringify(raw), 'utf8');
+}

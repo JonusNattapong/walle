@@ -5,10 +5,11 @@ import { fileURLToPath } from 'node:url';
 import { TASKS_DIR, listTasks, loadEvents, loadTask, saveTask } from './store.js';
 import { diffWorktree, mergeBranch, removeWorktree } from './worktree.js';
 import { createTask, drainQueue } from './runner.js';
-import { loadConfig } from './config.js';
+import { loadConfig, saveConfig } from './config.js';
 import { DASHBOARD_HTML } from './ui.js';
+import { on as onEvent } from './event-bus.js';
 
-export function startServer(port: number, defaultRepo: string): void {
+export async function startServer(port: number, defaultRepo: string, serveMcp?: boolean): Promise<void> {
   const app = express();
   app.use(express.json());
   const assetsDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'assets');
@@ -89,6 +90,16 @@ img.onload = () => {
     res.json({ ok: true });
   });
 
+  app.post('/api/tasks/:id/settings', (req, res) => {
+    const task = loadTask(req.params.id);
+    if (!task) return void res.status(404).json({ error: 'not found' });
+    const { model, engine } = req.body ?? {};
+    if (typeof engine === 'string') task.engine = engine;
+    if (typeof model === 'string') task.model = model || undefined;
+    saveTask(task);
+    res.json({ ok: true });
+  });
+
   app.post('/api/do', (req, res) => {
     const { prompt, repo, model } = req.body ?? {};
     if (!prompt || typeof prompt !== 'string') return void res.status(400).json({ error: 'prompt required' });
@@ -109,6 +120,71 @@ img.onload = () => {
     if (!Array.isArray(desks) || !desks.length) return void res.status(400).json({ error: 'desks[] required' });
     fs.writeFileSync(path.join(assetsDir, 'office-layout.json'), JSON.stringify({ width, height, desks, lounge }, null, 2));
     res.json({ ok: true });
+  });
+
+  app.get('/api/config', (req, res) => {
+    const repoPath = path.resolve(defaultRepo);
+    const config = loadConfig(repoPath);
+    res.json(config);
+  });
+
+  app.post('/api/config', (req, res) => {
+    const repoPath = path.resolve(defaultRepo);
+    const { engine, model, verify, maxRetries, concurrency, budget, notify } = req.body ?? {};
+    const config = loadConfig(repoPath);
+    if (typeof engine === 'string') config.engine = engine;
+    if (model !== undefined) config.model = model || undefined;
+    if (verify !== undefined) config.verify = verify || undefined;
+    if (maxRetries !== undefined) config.maxRetries = Number(maxRetries);
+    if (concurrency !== undefined) config.concurrency = Number(concurrency);
+    if (budget) {
+      config.budget = config.budget ?? {};
+      config.budget.perTask = (budget.perTask !== undefined && budget.perTask !== null && budget.perTask !== '') ? Number(budget.perTask) : undefined;
+      config.budget.perDay = (budget.perDay !== undefined && budget.perDay !== null && budget.perDay !== '') ? Number(budget.perDay) : undefined;
+    }
+    if (notify) {
+      config.notify = config.notify ?? {};
+      config.notify.webhook = notify.webhook || undefined;
+    }
+    try {
+      saveConfig(repoPath, config);
+      res.json({ ok: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  const agentStreams = new Map<string, import('express').Response[]>();
+  app.get('/api/agent-stream/:taskId', (req, res) => {
+    const { taskId } = req.params;
+    res.set({
+      'content-type': 'text/event-stream',
+      'cache-control': 'no-cache',
+      connection: 'keep-alive',
+    });
+    res.flushHeaders();
+    res.write(`data: {"type":"connected","taskId":"${taskId}"}\n\n`);
+
+    if (!agentStreams.has(taskId)) agentStreams.set(taskId, []);
+    agentStreams.get(taskId)!.push(res);
+
+    const unsub = onEvent('message.sent', (data: any) => {
+      if (data.toTask === taskId) {
+        res.write(`event: message.sent\ndata: ${JSON.stringify(data)}\n\n`);
+      }
+    });
+
+    const ping = setInterval(() => res.write(': ping\n\n'), 25_000);
+    req.on('close', () => {
+      unsub();
+      clearInterval(ping);
+      const list = agentStreams.get(taskId);
+      if (list) {
+        const idx = list.indexOf(res);
+        if (idx >= 0) list.splice(idx, 1);
+        if (list.length === 0) agentStreams.delete(taskId);
+      }
+    });
   });
 
   app.get('/api/stream', (req, res) => {
@@ -133,6 +209,12 @@ img.onload = () => {
       clearTimeout(timer);
     });
   });
+
+  if (serveMcp) {
+    const { mountMcpOnExpress } = await import('./mcp-server.js');
+    mountMcpOnExpress(app, defaultRepo);
+    console.log(`walle mcp → http://localhost:${port}/mcp`);
+  }
 
   app.listen(port, () => {
     console.log(`walle dashboard → http://localhost:${port}  (repo: ${defaultRepo})`);

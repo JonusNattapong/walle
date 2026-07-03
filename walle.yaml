@@ -1,6 +1,8 @@
-engine: claude
-verify: npm install --no-audit --no-fund && npm run typecheck
+engine: opencode
 maxRetries: 2
 concurrency: 2
+model: deepseek-v4-flash-free
+verify: npm install --no-audit --no-fund && npm run typecheck
 budget:
-  perTask: 3.00
+  perTask: 3
+notify: {}

@@ -5,7 +5,8 @@ export type TaskStatus =
   | 'done'
   | 'merged'
   | 'failed'
-  | 'cancelled';
+  | 'cancelled'
+  | 'waiting'; // waiting on dependency
 
 export interface Task {
   id: string;
@@ -22,8 +23,19 @@ export interface Task {
   costUsd: number;
   retries: number;
   error?: string;
-  /** OS pid of the running engine process, if any */
   pid?: number;
+  /** If part of a multi-agent task, this is the project/group id */
+  groupId?: string;
+  /** Human-readable role for multi-agent tasks */
+  role?: string;
+  /** Task IDs this task depends on */
+  dependsOn?: string[];
+  /** Task IDs that depend on this task */
+  dependedBy?: string[];
+  /** MACP session ID (for multi-agent collaboration) */
+  macpSessionId?: string;
+  /** Run agent in a visible terminal window instead of headless background */
+  visible?: boolean;
 }
 
 export type WalleEvent =
@@ -49,6 +61,32 @@ export interface WalleConfig {
   notify?: {
     webhook?: string;
   };
+}
+
+export interface Message {
+  id: string;
+  threadId: string;
+  fromTask: string;
+  fromRole?: string;
+  toTask: string;
+  toRole?: string;
+  subject: string;
+  body: string;
+  createdAt: string;
+  read: boolean;
+}
+
+export interface MultiAgentSpec {
+  /** Group/project id — auto-generated if not set */
+  groupId?: string;
+  roles: MultiAgentRole[];
+}
+
+export interface MultiAgentRole {
+  role: string;
+  prompt: string;
+  dependsOn?: string[];
+  model?: string;
 }
 
 export const DEFAULT_CONFIG: WalleConfig = {

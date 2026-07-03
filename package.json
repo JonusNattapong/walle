@@ -15,11 +15,15 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/cli.ts",
+    "dev:watch": "tsx watch src/cli.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "commander": "^12.1.0",
     "express": "^5.2.1",
+    "fuse.js": "^7.4.2",
+    "macp": "https://github.com/multiagentcognition/macp/archive/refs/heads/main.tar.gz",
     "yaml": "^2.5.0"
   },
   "devDependencies": {

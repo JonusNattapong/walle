@@ -1,0 +1,59 @@
+{
+  "_comment": "Name -> frame-index map for the Kenney 'Roguelike Indoor' pack (indoor.png, CC0). Phaser loads this sheet as a spritesheet; the frame index below is what you pass to scene.add.image(x, y, 'in', <index>). See indoor-tilemap-reference.png for a labelled grid of every tile.",
+  "sheet": {
+    "file": "indoor.png",
+    "tileSize": 16,
+    "spacing": 1,
+    "margin": 0,
+    "columns": 27,
+    "rows": 18,
+    "total": 486,
+    "indexing": "index = row * 27 + col ; pixelX = col*(16+1) ; pixelY = row*(16+1). NOTE: 27 columns, not 26 — the 1px spacing changes the column count. Getting this wrong shifts every index and picks the wrong tile."
+  },
+  "tiles": {
+    "floor_wood": 24,
+    "carpet_green": 132,
+
+    "chair_wood_down": 83,
+    "chair_wood_down_plain": 84,
+    "chair_ladder_up": 264,
+    "armchair_wood": 82,
+
+    "table_wood_left": 293,
+    "table_wood_mid": 294,
+    "table_wood_right": 295,
+    "table_oval_left": 246,
+    "table_oval_right": 247,
+
+    "sofa_orange_left": 270,
+    "sofa_orange_mid": 271,
+    "sofa_orange_right": 272,
+    "sofa_orange_legs_left": 232,
+    "sofa_orange_legs_mid": 233,
+    "sofa_orange_legs_right": 234,
+    "sofa_green_left": 277,
+    "sofa_green_mid": 278,
+    "sofa_green_right": 279,
+
+    "bookshelf_orange_top": 12,
+    "bookshelf_orange_books": 39,
+    "bookshelf_green_top": 14,
+    "bookshelf_green_books": 41,
+
+    "plant_leafy": 16,
+    "plant_bushy": 17,
+
+    "fridge": 216,
+    "stove": 217,
+    "piano_left": 239,
+    "piano_right": 240,
+
+    "candelabra_a": 19,
+    "candelabra_b": 20,
+    "torch_wall": 176,
+    "clothesline_left": 43,
+    "clothesline_mid": 44,
+    "clothesline_right": 45
+  },
+  "verified": "Furniture/floor/plant/appliance/bookshelf entries visually confirmed against the pixel art. Decorative extras (candelabra, torch, clothesline, piano) identified from the reference grid but less critical."
+}
