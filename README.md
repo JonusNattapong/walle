@@ -45,3 +45,7 @@ notify:
 ```
 
 See [PLAN.md](PLAN.md) for the roadmap and architecture.
+
+## License
+
+MIT
