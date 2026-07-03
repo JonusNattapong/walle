@@ -180,15 +180,43 @@ class Office extends Phaser.Scene {
     this.add.image(px(21), px(12), 'in', F.CHAIR_U);
     this.add.image(px(24), px(13), 'in', F.PLANT);
     this.add.image(px(1), px(13), 'in', F.PLANT2);
-    // desks with shadows
+    // desks with shadows — drawn procedurally (computer desk, not tile furniture)
     for (const d of DESKS) {
       this.shadow(d.x * T + 16, (d.y + 1) * T - 4);
-      this.add.image(px(d.x), px(d.y), 'in', F.DESK);
-      this.add.image(px(d.x + 1), px(d.y), 'in', F.DESK2);
-      this.add.image(px(d.x), px(d.y - 1), 'in', F.CHAIR_U);
+      this.drawDesk(px(d.x), px(d.y));
+      this.drawOfficeChair(px(d.x) + 8, px(d.y - 1) + 4);
     }
   }
   shadow(cx, cy) { this.add.ellipse(cx, cy, 34, 8, 0x000000, 0.18); }
+  // A recognizable top-down computer desk: wood surface, CRT/monitor with screen
+  // glow, keyboard, mouse. Kenney's roguelike-indoors set has no office tiles
+  // (nightstands/chests only), so this is drawn by hand instead of stamped.
+  drawDesk(cx, cy) {
+    const w = 30, h = 20, x0 = cx - w / 2, y0 = cy - h / 2;
+    this.add.rectangle(cx, cy + 1, w, h, 0x0000, 0).setAlpha(0);
+    const top = this.add.rectangle(cx, cy, w, h, 0x8a6339).setStrokeStyle(1, 0x5c4326);
+    this.add.rectangle(cx, cy + h / 2 - 2, w - 4, 3, 0x6e4f2c); // front edge shading
+    this.add.rectangle(cx - w / 2 + 3, cy + h / 2 - 3, 3, 8, 0x5c4326); // legs
+    this.add.rectangle(cx + w / 2 - 3, cy + h / 2 - 3, 3, 8, 0x5c4326);
+    // monitor
+    const monX = cx - 4, monY = cy - 3;
+    this.add.rectangle(monX, monY, 15, 11, 0x24242c).setStrokeStyle(1, 0x111116);
+    this.add.rectangle(monX, monY, 11, 7, 0x2fb47a);
+    this.add.rectangle(monX, monY + 6, 6, 2, 0x33333c); // stand
+    // keyboard + mouse
+    this.add.rectangle(cx - 2, cy + 6, 12, 5, 0xd8d8de).setStrokeStyle(1, 0xaaaab2);
+    this.add.rectangle(cx + 10, cy + 6, 4, 4, 0xd8d8de).setStrokeStyle(1, 0xaaaab2);
+    // mug for a lived-in touch
+    this.add.rectangle(cx + 11, cy - 5, 4, 4, 0xd8734a).setStrokeStyle(1, 0x8a3f22);
+  }
+  drawOfficeChair(cx, cy) {
+    this.add.ellipse(cx, cy + 6, 12, 4, 0x000000, 0.15);
+    this.add.circle(cx - 4, cy + 7, 1.4, 0x2a2a32);
+    this.add.circle(cx + 4, cy + 7, 1.4, 0x2a2a32); // casters
+    this.add.rectangle(cx, cy + 2, 3, 5, 0x3a3a44); // post
+    this.add.rectangle(cx, cy, 12, 9, 0x44475a).setStrokeStyle(1, 0x2c2e3a); // seat
+    this.add.rectangle(cx, cy - 8, 11, 7, 0x3d4054).setStrokeStyle(1, 0x2c2e3a); // backrest
+  }
   syncAgents() {
     this.agents.clear(true, true);
     this.deskMarks.clear(true, true);
